@@ -11,4 +11,4 @@ SQL: SQLite, Postgre (сложные запросы, соединения таб
 Аналитические кейсы  
 ## Как со мной связаться
 Почта: nikolayvolskiy1994@gmail.com  
-Telegram: @NikolayVolskiy
+Телефон: 7-985-085-38-29
