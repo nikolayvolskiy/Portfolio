@@ -1,0 +1,173 @@
+## Анализ возвращаемости клиентов (когортный анализ за 12 месяцев)
+
+
+**Цель анализа:**
+
+
+Оценить, насколько успешно компания удерживает клиентов после первой покупки. Метрика Retention Rate показывает процент клиентов, совершивших повторные покупки в последующие месяцы после привлечения.
+
+
+**Ключевые понятия:**
+
+
+- Когорта — группа клиентов, совершивших первую покупку в одном месяце.
+
+- Retention Rate — доля клиентов из когорты, вернувшихся в последующие месяцы (в %).
+
+- Матрица retention — таблица, где строки — когорты, столбцы — месяцы, значения — процент возвращаемости.
+
+
+**Почему это важно:**
+
+
+- Выявляет «слабые» месяцы привлечения (низкий retention).
+
+- Помогает оценить эффективность программ лояльности.
+
+- Позволяет прогнозировать доход от существующих клиентов.
+
+
+Сформируйте матрицу возвращаемости клиентов за последние 12 месяцев.
+
+
+**Решение на PostgreSQL:**
+
+```sql
+-- Когортный анализ покупателей по месяцам (12 месяцев)
+
+WITH customer_first_purchase AS (
+    SELECT 
+        customer_phone,
+        MIN(sales_time::date) as first_purchase_date,
+        to_char(MIN(sales_time), 'YYYY-MM') as cohort_month
+    FROM main_sales
+    WHERE customer_phone IS NOT NULL 
+      AND customer_phone != ''
+      AND sales_time::date >= CURRENT_DATE - INTERVAL '12 months'
+    GROUP BY customer_phone
+),
+
+cohort_analysis AS (
+    SELECT 
+        cp.cohort_month,
+        cp.customer_phone,
+        (EXTRACT(YEAR FROM ms.sales_time) * 12 + EXTRACT(MONTH FROM ms.sales_time)) - 
+        (EXTRACT(YEAR FROM cp.first_purchase_date) * 12 + EXTRACT(MONTH FROM cp.first_purchase_date)) as months_since_first
+    FROM customer_first_purchase cp
+    LEFT JOIN main_sales ms ON cp.customer_phone = ms.customer_phone
+      AND ms.sales_time::date >= cp.first_purchase_date
+      AND ms.sales_time::date < cp.first_purchase_date + INTERVAL '12 months'
+    WHERE ms.sales_time IS NOT NULL
+)
+
+SELECT 
+    cohort_month,
+    COUNT(DISTINCT customer_phone) as cohort_size,
+    ROUND(100.0 * COUNT(DISTINCT CASE WHEN months_since_first = 0 THEN customer_phone END) / 
+          COUNT(DISTINCT customer_phone), 1) as month_0,
+    ROUND(100.0 * COUNT(DISTINCT CASE WHEN months_since_first = 1 THEN customer_phone END) / 
+          COUNT(DISTINCT customer_phone), 1) as month_1,
+    ROUND(100.0 * COUNT(DISTINCT CASE WHEN months_since_first = 2 THEN customer_phone END) / 
+          COUNT(DISTINCT customer_phone), 1) as month_2,
+    ROUND(100.0 * COUNT(DISTINCT CASE WHEN months_since_first = 3 THEN customer_phone END) / 
+          COUNT(DISTINCT customer_phone), 1) as month_3,
+    ROUND(100.0 * COUNT(DISTINCT CASE WHEN months_since_first = 4 THEN customer_phone END) / 
+          COUNT(DISTINCT customer_phone), 1) as month_4,
+    ROUND(100.0 * COUNT(DISTINCT CASE WHEN months_since_first = 5 THEN customer_phone END) / 
+          COUNT(DISTINCT customer_phone), 1) as month_5,
+    ROUND(100.0 * COUNT(DISTINCT CASE WHEN months_since_first = 6 THEN customer_phone END) / 
+          COUNT(DISTINCT customer_phone), 1) as month_6,
+    ROUND(100.0 * COUNT(DISTINCT CASE WHEN months_since_first = 7 THEN customer_phone END) / 
+          COUNT(DISTINCT customer_phone), 1) as month_7,
+    ROUND(100.0 * COUNT(DISTINCT CASE WHEN months_since_first = 8 THEN customer_phone END) / 
+          COUNT(DISTINCT customer_phone), 1) as month_8,
+    ROUND(100.0 * COUNT(DISTINCT CASE WHEN months_since_first = 9 THEN customer_phone END) / 
+          COUNT(DISTINCT customer_phone), 1) as month_9,
+    ROUND(100.0 * COUNT(DISTINCT CASE WHEN months_since_first = 10 THEN customer_phone END) / 
+          COUNT(DISTINCT customer_phone), 1) as month_10,
+    ROUND(100.0 * COUNT(DISTINCT CASE WHEN months_since_first = 11 THEN customer_phone END) / 
+          COUNT(DISTINCT customer_phone), 1) as month_11
+FROM cohort_analysis
+GROUP BY cohort_month
+HAVING COUNT(DISTINCT customer_phone) >= 10
+ORDER BY cohort_month;
+
+```
+
+
+**Как читать результат (матрицу):**
+
+
+Строки — когорты (месяцы первой покупки клиентов).
+
+
+Столбцы:
+
+
+- cohort_month — месяц формирования когорты;
+
+
+- cohort_size — количество клиентов в когорте;
+
+
+- month_0–month_11 — процент клиентов, вернувшихся в соответствующий месяц после первой покупки.
+
+
+ - Значения — процент возвращаемости (например, month_3 = 45.2 означает, что 45.2% клиентов из когорты совершили покупку через 3 месяца после первой).
+
+
+**Примеры интерпретации:**
+
+
+Высокий month_0 (близко к 100%) — клиенты часто совершают повторные покупки сразу после первой. Это может быть связано с:
+
+
+- товарами регулярного спроса;
+
+
+- программами лояльности;
+
+
+- кросс‑продажами.
+
+
+Резкое падение в month_1–month_2 — сигнал к анализу причин оттока:
+
+
+- отсутствие стимулов для повторных покупок;
+
+
+- проблемы с качеством продукта/сервиса;
+
+
+- сезонность спроса.
+
+
+Стабильная возвращаемость в month_6–month_11 — признак высокой лояльности. Такие когорты ценны для долгосрочного роста.
+
+
+Сравнение когорт позволяет выявить:
+
+
+- периоды с лучшими показателями удержания (например, когорты лета показывают более высокую возвращаемость);
+
+
+- влияние изменений в продукте/маркетинге (если поздние когорты демонстрируют рост возвращаемости).
+
+
+Низкий cohort_size — малые когорты менее репрезентативны. Их лучше анализировать отдельно или объединять с соседними периодами.
+
+
+**Ключевые выводы:**
+
+
+- Средний уровень возвращаемости через 6 месяцев — ключевой индикатор лояльности.
+
+
+- Периоды резкого падения возвращаемости — точки для оптимизации клиентского пути.
+
+
+- Когорты с высокой долгосрочной возвращаемостью — образцы успешных практик привлечения.
+
+
+- Сравнение month_0 и month_11 показывает, насколько клиенты остаются вовлечёнными через год после первой покупки.
